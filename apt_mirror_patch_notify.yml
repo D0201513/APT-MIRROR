@@ -1,7 +1,7 @@
 ---
 - name: Configure APT Mirror and Send Notification
   hosts: Melur
-  become: yes
+  become: no
   vars:
     mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
     release: "noble"
