@@ -1,7 +1,7 @@
 ---
 - name: Configure APT Mirror and Send Notification
   hosts: Melur
-  become: no
+  become: false
   vars:
     mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
     release: "noble"
@@ -9,15 +9,15 @@
 
     # Sources for Kali
     sources_content_kali: |
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main  universe 
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main  universe 
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-security main  universe 
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main universe
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main universe
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-security main universe
 
     # Sources for Mint/Ubuntu
     sources_content_mint: |
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main  universe 
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main  universe 
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main  universe 
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main universe
 
     # Multiple recipients (comma-separated)
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
@@ -26,12 +26,14 @@
     - name: Patch and Notify Block
       block:
         - name: Update sources.list with local mirror
+          become: yes
           copy:
             dest: /etc/apt/sources.list
             content: "{{ sources_content_kali if is_kali else sources_content_mint }}"
           register: sources_result
 
         - name: Update APT package cache
+          become: yes
           apt:
             update_cache: yes
           register: apt_result
@@ -40,6 +42,7 @@
         - name: Set patch_status to failed
           set_fact:
             patch_status: "❌ FAILED"
+
         - name: Set fallback results
           set_fact:
             sources_result: { changed: false }
