@@ -1,5 +1,5 @@
 ---
-- name: Configure APT Mirror and Send Notification
+- name: Configure APT Mirror on all hosts
   hosts: Melur
   become: false
   vars:
@@ -23,7 +23,7 @@
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
 
   tasks:
-    - name: Patch and Notify Block
+    - name: Patch block
       block:
         - name: Update sources.list with local mirror
           become: yes
@@ -38,42 +38,71 @@
             update_cache: yes
           register: apt_result
 
+        - name: Mark patch success
+          set_fact:
+            patch_status: "SUCCESS"
       rescue:
-        - name: Set patch_status to failed
+        - name: Mark patch failed
           set_fact:
-            patch_status: "❌ FAILED"
-
-        - name: Set fallback results
-          set_fact:
-            sources_result: { changed: false }
-            apt_result: { changed: false }
-
+            patch_status: "FAILED"
       always:
-        - name: Send notification email
+        - name: Collect results into hostvars
+          set_fact:
+            patch_summary: |
+              {
+                "host": "{{ inventory_hostname }}",
+                "status": "{{ patch_status }}",
+                "os": "{{ ansible_distribution }} {{ ansible_distribution_version }}",
+                "mirror": "{{ mirror_url }}",
+                "release": "{{ release }}"
+              }
+
+        - name: Add host results to global list
+          run_once: false
+          local_action:
+            module: set_fact
+            patch_results: "{{ (patch_results | default([])) + [patch_summary | from_yaml] }}"
           delegate_to: localhost
-          become: false
-          community.general.mail:
-            host: smtp.gmail.com
-            port: 587
-            secure: starttls
-            username: "{{ lookup('env', 'EMAIL_USER') }}"
-            password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"
-            to: "{{ notification_recipients }}"
-            from: "{{ lookup('env', 'EMAIL_USER') }}"
-            subject: "{{ patch_status | default('✅ SUCCESS') }} Mirror Patch Report - {{ inventory_hostname }}"
-            body: |
-              Hello Team,
 
-              The system **{{ inventory_hostname }}** has completed the mirror patch operation.
+- name: Send consolidated email report
+  hosts: localhost
+  gather_facts: false
+  vars:
+    notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
+  tasks:
+    - name: Separate success and failure hosts
+      set_fact:
+        success_hosts: "{{ patch_results | selectattr('status','equalto','SUCCESS') | map(attribute='host') | list }}"
+        failed_hosts: "{{ patch_results | selectattr('status','equalto','FAILED') | map(attribute='host') | list }}"
 
-              🖥️ Hostname         : {{ inventory_hostname }}
-              🧠 OS               : {{ ansible_distribution }} {{ ansible_distribution_version }}
-              🌐 Mirror URL       : {{ mirror_url }}
-              📦 Release          : {{ release }}
-              📅 Timestamp        : {{ ansible_date_time.iso8601 }}
+    - name: Send summary email
+      community.general.mail:
+        host: smtp.gmail.com
+        port: 587
+        secure: starttls
+        username: "{{ lookup('env', 'EMAIL_USER') }}"
+        password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"
+        to: "{{ notification_recipients }}"
+        from: "{{ lookup('env', 'EMAIL_USER') }}"
+        subject: "Mirror Patch Report - {{ ansible_date_time.iso8601 }}"
+        body: |
+          Hello Team,
 
-              📁 Source list file : {{ '✅ Updated' if sources_result.changed else '✅ Already Configured' }}
-              🔄 APT Cache Status : {{ '✅ Refreshed' if apt_result.changed else '🔄 No Updates Needed' }}
+          ✅ Patch Summary Report ✅
 
-              Regards,  
-              🔧 Ansible Automation System
+          Total Hosts       : {{ patch_results | length }}
+          Successful Patches: {{ success_hosts | length }}
+          Failed Patches    : {{ failed_hosts | length }}
+
+          --- Success Hosts ---
+          {% for h in success_hosts %}
+          - {{ h }}
+          {% endfor %}
+
+          --- Failed Hosts ---
+          {% for h in failed_hosts %}
+          - {{ h }}
+          {% endfor %}
+
+          Regards,
+          🔧 Ansible Automation System
