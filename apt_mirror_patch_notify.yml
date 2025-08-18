@@ -19,9 +19,6 @@
       deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
       deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main universe
 
-    # Multiple recipients (comma-separated)
-    notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
-
   tasks:
     - name: Patch block
       block:
@@ -49,20 +46,18 @@
         - name: Collect results into hostvars
           set_fact:
             patch_summary: |
-              {
-                "host": "{{ inventory_hostname }}",
-                "status": "{{ patch_status }}",
-                "os": "{{ ansible_distribution }} {{ ansible_distribution_version }}",
-                "mirror": "{{ mirror_url }}",
-                "release": "{{ release }}"
-              }
+              host: "{{ inventory_hostname }}"
+              status: "{{ patch_status }}"
+              os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
+              mirror: "{{ mirror_url }}"
+              release: "{{ release }}"
 
-        - name: Add host results to global list
-          run_once: false
-          local_action:
-            module: set_fact
-            patch_results: "{{ (patch_results | default([])) + [patch_summary | from_yaml] }}"
-          delegate_to: localhost
+        - name: Export results to controller
+          set_stats:
+            data:
+              patch_results: "{{ (patch_results | default([])) + [patch_summary | from_yaml] }}"
+
+# ==================== SECOND PLAY ====================
 
 - name: Send consolidated email report
   hosts: localhost
