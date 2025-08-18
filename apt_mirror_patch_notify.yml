@@ -43,18 +43,22 @@
           set_fact:
             patch_status: "FAILED"
       always:
-        - name: Export results to controller (merge centrally)
+        - name: Collect patch results per host
+          set_fact:
+            patch_summary:
+              host: "{{ inventory_hostname }}"
+              status: "{{ patch_status }}"
+              os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
+              mirror: "{{ mirror_url }}"
+              release: "{{ release }}"
+
+        - name: Save results to controller
           delegate_to: localhost
           run_once: false
-          set_fact:
-            patch_results: "{{ (patch_results | default([])) + [ {
-                'host': inventory_hostname,
-                'status': patch_status,
-                'os': ansible_distribution ~ ' ' ~ ansible_distribution_version,
-                'mirror': mirror_url,
-                'release': release
-              } ] }}"
-          cacheable: true   # ✅ Ensures persistence across plays
+          local_action:
+            module: copy
+            content: "{{ patch_summary | to_nice_json }}"
+            dest: "/tmp/patch_result_{{ inventory_hostname }}.json"
 
 # ==================== SECOND PLAY ====================
 
@@ -64,9 +68,21 @@
   vars:
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
   tasks:
-    - name: Ensure patch_results is defined
+    - name: Load all host results
+      find:
+        paths: "/tmp"
+        patterns: "patch_result_*.json"
+      register: patch_files
+
+    - name: Read patch result files
+      slurp:
+        src: "{{ item.path }}"
+      with_items: "{{ patch_files.files }}"
+      register: raw_patch_data
+
+    - name: Build patch_results list
       set_fact:
-        patch_results: "{{ patch_results | default([]) }}"
+        patch_results: "{{ raw_patch_data.results | map(attribute='content') | map('b64decode') | map('from_json') | list }}"
 
     - name: Separate success and failure hosts
       set_fact:
