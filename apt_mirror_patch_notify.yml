@@ -1,6 +1,6 @@
 ---
 - name: Configure APT Mirror on all hosts
-  hosts: Melur
+  hosts: linux_servers
   become: false
   any_errors_fatal: false
   ignore_unreachable: yes
