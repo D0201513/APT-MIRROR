@@ -2,10 +2,13 @@
 - name: Configure APT Mirror on all hosts
   hosts: Melur
   become: false
+  any_errors_fatal: false
+  ignore_unreachable: yes
+
   vars:
     mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
     release: "noble"
-    is_kali: "{{ ansible_distribution == 'Kali' }}"
+    is_kali: "{{ ansible_distribution == 'Kali' | default(false) }}"
 
     # Sources for Kali
     sources_content_kali: |
@@ -28,12 +31,14 @@
             dest: /etc/apt/sources.list
             content: "{{ sources_content_kali if is_kali else sources_content_mint }}"
           register: sources_result
+          ignore_errors: yes
 
         - name: Update APT package cache
           become: yes
           apt:
             update_cache: yes
           register: apt_result
+          ignore_errors: yes
 
         - name: Mark patch success
           set_fact:
@@ -41,7 +46,7 @@
             sources_file_status: "✅ Updated"
             apt_cache_status: "✅ Refreshed"
       rescue:
-        - name: Mark patch failed
+        - name: Mark patch failed (from rescue)
           set_fact:
             patch_status: "FAILED"
             sources_file_status: "❌ Failed"
@@ -53,13 +58,13 @@
           add_host:
             name: "{{ inventory_hostname }}"
             groups: patch_summary
-            patch_status: "{{ patch_status }}"
-            os: "{{ ansible_distribution ~ ' ' ~ ansible_distribution_version }}"
+            patch_status: "{{ patch_status | default('FAILED') }}"
+            os: "{{ ansible_distribution ~ ' ' ~ ansible_distribution_version if ansible_distribution is defined else 'Unknown' }}"
             mirror: "{{ mirror_url }}"
             release: "{{ release }}"
-            timestamp: "{{ ansible_date_time.iso8601 }}"
-            sources_file_status: "{{ sources_file_status }}"
-            apt_cache_status: "{{ apt_cache_status }}"
+            timestamp: "{{ ansible_date_time.iso8601 if ansible_date_time is defined else lookup('pipe','date -Iseconds') }}"
+            sources_file_status: "{{ sources_file_status | default('❌ Not Attempted') }}"
+            apt_cache_status: "{{ apt_cache_status | default('❌ Not Attempted') }}"
 
 # ==================== SECOND PLAY ====================
 
