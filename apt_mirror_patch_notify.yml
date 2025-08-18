@@ -6,7 +6,6 @@
     mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
     release: "noble"
     is_kali: "{{ ansible_distribution == 'Kali' }}"
-    patch_results: []   # ✅ Initialize results list
 
     # Sources for Kali (forced trusted=yes to avoid Release file error)
     sources_content_kali: |
@@ -44,19 +43,18 @@
           set_fact:
             patch_status: "FAILED"
       always:
-        - name: Collect results into hostvars
+        - name: Export results to controller (merge centrally)
+          delegate_to: localhost
+          run_once: false
           set_fact:
-            patch_summary:
-              host: "{{ inventory_hostname }}"
-              status: "{{ patch_status }}"
-              os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
-              mirror: "{{ mirror_url }}"
-              release: "{{ release }}"
-
-        - name: Export results to controller
-          set_stats:
-            data:
-              patch_results: "{{ (patch_results | default([])) + [patch_summary] }}"
+            patch_results: "{{ (patch_results | default([])) + [ {
+                'host': inventory_hostname,
+                'status': patch_status,
+                'os': ansible_distribution ~ ' ' ~ ansible_distribution_version,
+                'mirror': mirror_url,
+                'release': release
+              } ] }}"
+          cacheable: true   # ✅ Ensures persistence across plays
 
 # ==================== SECOND PLAY ====================
 
