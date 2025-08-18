@@ -7,11 +7,11 @@
     release: "noble"
     is_kali: "{{ ansible_distribution == 'Kali' }}"
 
-    # Sources for Kali
+    # Sources for Kali (forced trusted=yes to avoid Release file error)
     sources_content_kali: |
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main universe
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main universe
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-security main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main universe
 
     # Sources for Mint/Ubuntu
     sources_content_mint: |
@@ -66,7 +66,7 @@
 
 - name: Send consolidated email report
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
   vars:
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
   tasks:
