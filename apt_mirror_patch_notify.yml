@@ -7,7 +7,7 @@
     release: "noble"
     is_kali: "{{ ansible_distribution == 'Kali' }}"
 
-    # Sources for Kali (forced trusted=yes to avoid Release file error)
+    # Sources for Kali
     sources_content_kali: |
       deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main universe
       deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
@@ -38,27 +38,29 @@
         - name: Mark patch success
           set_fact:
             patch_status: "SUCCESS"
+            sources_file_status: "✅ Updated"
+            apt_cache_status: "✅ Refreshed"
       rescue:
         - name: Mark patch failed
           set_fact:
             patch_status: "FAILED"
+            sources_file_status: "❌ Failed"
+            apt_cache_status: "❌ Failed"
       always:
-        - name: Collect patch results per host
-          set_fact:
-            patch_summary:
-              host: "{{ inventory_hostname }}"
-              status: "{{ patch_status }}"
-              os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
-              mirror: "{{ mirror_url }}"
-              release: "{{ release }}"
-
-        - name: Save results to controller
+        - name: Export results to controller
           delegate_to: localhost
           run_once: false
-          local_action:
-            module: copy
-            content: "{{ patch_summary | to_nice_json }}"
-            dest: "/tmp/patch_result_{{ inventory_hostname }}.json"
+          set_fact:
+            patch_results: "{{ (patch_results | default([])) + [ {
+                'host': inventory_hostname,
+                'status': patch_status,
+                'os': ansible_distribution ~ ' ' ~ ansible_distribution_version,
+                'mirror': mirror_url,
+                'release': release,
+                'timestamp': ansible_date_time.iso8601,
+                'sources_file_status': sources_file_status,
+                'apt_cache_status': apt_cache_status
+              } ] }}"
 
 # ==================== SECOND PLAY ====================
 
@@ -67,29 +69,18 @@
   gather_facts: true
   vars:
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
+
   tasks:
-    - name: Load all host results
-      find:
-        paths: "/tmp"
-        patterns: "patch_result_*.json"
-      register: patch_files
-
-    - name: Read patch result files
-      slurp:
-        src: "{{ item.path }}"
-      with_items: "{{ patch_files.files }}"
-      register: raw_patch_data
-
-    - name: Build patch_results list
+    - name: Ensure patch_results is defined
       set_fact:
-        patch_results: "{{ raw_patch_data.results | map(attribute='content') | map('b64decode') | map('from_json') | list }}"
+        patch_results: "{{ patch_results | default([]) }}"
 
     - name: Separate success and failure hosts
       set_fact:
-        success_hosts: "{{ patch_results | selectattr('status','equalto','SUCCESS') | map(attribute='host') | list }}"
-        failed_hosts: "{{ patch_results | selectattr('status','equalto','FAILED') | map(attribute='host') | list }}"
+        success_hosts: "{{ patch_results | selectattr('status','equalto','SUCCESS') | list }}"
+        failed_hosts: "{{ patch_results | selectattr('status','equalto','FAILED') | list }}"
 
-    - name: Send summary email
+    - name: Send summary email with details
       community.general.mail:
         host: smtp.gmail.com
         port: 587
@@ -110,12 +101,26 @@
 
           --- Success Hosts ---
           {% for h in success_hosts %}
-          - {{ h }}
+          Hostname   : {{ h.host }}
+          OS         : {{ h.os }}
+          Mirror URL : {{ h.mirror }}
+          Release    : {{ h.release }}
+          Timestamp  : {{ h.timestamp }}
+          Source List File : {{ h.sources_file_status }}
+          APT Cache Status : {{ h.apt_cache_status }}
+
           {% endfor %}
 
           --- Failed Hosts ---
           {% for h in failed_hosts %}
-          - {{ h }}
+          Hostname   : {{ h.host }}
+          OS         : {{ h.os }}
+          Mirror URL : {{ h.mirror }}
+          Release    : {{ h.release }}
+          Timestamp  : {{ h.timestamp }}
+          Source List File : {{ h.sources_file_status }}
+          APT Cache Status : {{ h.apt_cache_status }}
+
           {% endfor %}
 
           Regards,
