@@ -63,6 +63,10 @@
       set_fact:
         all_reports: "{{ all_reports | default([]) + [_report] }}"
 
+    - name: Debug all reports (for debugging purposes)
+      debug:
+        var: all_reports
+
 # -----------------------------
 # Send ONE email after all hosts
 # -----------------------------
@@ -99,7 +103,6 @@
           --- Host Reports ---
           {% for report in all_reports %}
           {{ report }}
-
           {% endfor %}
 
           Regards,
