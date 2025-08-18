@@ -6,6 +6,7 @@
     mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
     release: "noble"
     is_kali: "{{ ansible_distribution == 'Kali' }}"
+    patch_results: []   # ✅ Initialize results list
 
     # Sources for Kali (forced trusted=yes to avoid Release file error)
     sources_content_kali: |
@@ -45,7 +46,7 @@
       always:
         - name: Collect results into hostvars
           set_fact:
-            patch_summary: |
+            patch_summary:
               host: "{{ inventory_hostname }}"
               status: "{{ patch_status }}"
               os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
@@ -55,7 +56,7 @@
         - name: Export results to controller
           set_stats:
             data:
-              patch_results: "{{ (patch_results | default([])) + [patch_summary | from_yaml] }}"
+              patch_results: "{{ (patch_results | default([])) + [patch_summary] }}"
 
 # ==================== SECOND PLAY ====================
 
@@ -65,6 +66,10 @@
   vars:
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
   tasks:
+    - name: Ensure patch_results is defined
+      set_fact:
+        patch_results: "{{ patch_results | default([]) }}"
+
     - name: Separate success and failure hosts
       set_fact:
         success_hosts: "{{ patch_results | selectattr('status','equalto','SUCCESS') | map(attribute='host') | list }}"
