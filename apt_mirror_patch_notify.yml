@@ -1,20 +1,17 @@
 ---
-- name: Configure APT Mirror on all hosts
-  hosts: linux_servers
+name: Configure APT Mirror and Send Notification
+  hosts: 10.17.10.59
   become: false
-  any_errors_fatal: false
-  ignore_unreachable: yes
-
   vars:
     mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
     release: "noble"
-    is_kali: "{{ ansible_distribution == 'Kali' | default(false) }}"
+    is_kali: "{{ ansible_distribution == 'Kali' }}"
 
     # Sources for Kali
     sources_content_kali: |
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main universe
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main universe
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main universe
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main universe
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-security main universe
 
     # Sources for Mint/Ubuntu
     sources_content_mint: |
@@ -22,8 +19,11 @@
       deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
       deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main universe
 
+    # Multiple recipients (comma-separated)
+    notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
+
   tasks:
-    - name: Patch block
+    - name: Patch and Notify Block
       block:
         - name: Update sources.list with local mirror
           become: yes
@@ -31,101 +31,49 @@
             dest: /etc/apt/sources.list
             content: "{{ sources_content_kali if is_kali else sources_content_mint }}"
           register: sources_result
-          ignore_errors: yes
 
         - name: Update APT package cache
           become: yes
           apt:
             update_cache: yes
           register: apt_result
-          ignore_errors: yes
 
-        - name: Mark patch success
-          set_fact:
-            patch_status: "SUCCESS"
-            sources_file_status: "✅ Updated"
-            apt_cache_status: "✅ Refreshed"
       rescue:
-        - name: Mark patch failed (from rescue)
+        - name: Set patch_status to failed
           set_fact:
-            patch_status: "FAILED"
-            sources_file_status: "❌ Failed"
-            apt_cache_status: "❌ Failed"
+            patch_status: "❌ FAILED"
+
+        - name: Set fallback results
+          set_fact:
+            sources_result: { changed: false }
+            apt_result: { changed: false }
+
       always:
-        - name: Export results for consolidation
+        - name: Send notification email
           delegate_to: localhost
-          run_once: false
-          add_host:
-            name: "{{ inventory_hostname }}"
-            groups: patch_summary
-            patch_status: "{{ patch_status | default('FAILED') }}"
-            os: "{{ ansible_distribution ~ ' ' ~ ansible_distribution_version if ansible_distribution is defined else 'Unknown' }}"
-            mirror: "{{ mirror_url }}"
-            release: "{{ release }}"
-            timestamp: "{{ ansible_date_time.iso8601 if ansible_date_time is defined else lookup('pipe','date -Iseconds') }}"
-            sources_file_status: "{{ sources_file_status | default('❌ Not Attempted') }}"
-            apt_cache_status: "{{ apt_cache_status | default('❌ Not Attempted') }}"
+          become: false
+          community.general.mail:
+            host: smtp.gmail.com
+            port: 587
+            secure: starttls
+            username: "{{ lookup('env', 'EMAIL_USER') }}"
+            password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"
+            to: "{{ notification_recipients }}"
+            from: "{{ lookup('env', 'EMAIL_USER') }}"
+            subject: "{{ patch_status | default('✅ SUCCESS') }} Mirror Patch Report - {{ inventory_hostname }}"
+            body: |
+              Hello Team,
 
-# ==================== SECOND PLAY ====================
+              The system **{{ inventory_hostname }}** has completed the mirror patch operation.
 
-- name: Send consolidated email report
-  hosts: localhost
-  gather_facts: true
-  vars:
-    notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
+              🖥️ Hostname         : {{ inventory_hostname }}
+              🧠 OS               : {{ ansible_distribution }} {{ ansible_distribution_version }}
+              🌐 Mirror URL       : {{ mirror_url }}
+              📦 Release          : {{ release }}
+              📅 Timestamp        : {{ ansible_date_time.iso8601 }}
 
-  tasks:
-    - name: Build patch_results list from patch_summary group
-      set_fact:
-        patch_results: "{{ groups['patch_summary'] | map('extract', hostvars) | list }}"
+              📁 Source list file : {{ '✅ Updated' if sources_result.changed else '✅ Already Configured' }}
+              🔄 APT Cache Status : {{ '✅ Refreshed' if apt_result.changed else '🔄 No Updates Needed' }}
 
-    - name: Separate success and failure hosts
-      set_fact:
-        success_hosts: "{{ patch_results | selectattr('patch_status','equalto','SUCCESS') | list }}"
-        failed_hosts: "{{ patch_results | selectattr('patch_status','equalto','FAILED') | list }}"
-
-    - name: Send summary email with details
-      community.general.mail:
-        host: smtp.gmail.com
-        port: 587
-        secure: starttls
-        username: "{{ lookup('env', 'EMAIL_USER') }}"
-        password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"
-        to: "{{ notification_recipients }}"
-        from: "{{ lookup('env', 'EMAIL_USER') }}"
-        subject: "Mirror Patch Report - {{ ansible_date_time.iso8601 }}"
-        body: |
-          Hello Team,
-
-          ✅ Patch Summary Report ✅
-
-          Total Hosts       : {{ patch_results | length }}
-          Successful Patches: {{ success_hosts | length }}
-          Failed Patches    : {{ failed_hosts | length }}
-
-          --- ✅ Success Hosts ---
-          {% for h in success_hosts %}
-          Hostname          : {{ h.inventory_hostname }}
-          OS                : {{ h.os }}
-          Mirror URL        : {{ h.mirror }}
-          Release           : {{ h.release }}
-          Timestamp         : {{ h.timestamp }}
-          Source List File  : {{ h.sources_file_status }}
-          APT Cache Status  : {{ h.apt_cache_status }}
-
-          {% endfor %}
-
-          --- ❌ Failed Hosts ---
-          {% for h in failed_hosts %}
-          Hostname          : {{ h.inventory_hostname }}
-          OS                : {{ h.os }}
-          Mirror URL        : {{ h.mirror }}
-          Release           : {{ h.release }}
-          Timestamp         : {{ h.timestamp }}
-          Source List File  : {{ h.sources_file_status }}
-          APT Cache Status  : {{ h.apt_cache_status }}
-
-          {% endfor %}
-
-          Regards,
-          🔧 Ansible Automation System
+              Regards,  
+              🔧 Ansible Automation System
