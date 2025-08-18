@@ -2,6 +2,7 @@
 - name: Patch Hosts and Collect Results
   hosts: linux_servers
   become: true
+  gather_facts: yes
   vars:
     mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
     release: "noble"
@@ -70,6 +71,7 @@
   gather_facts: false
   vars:
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
+    report_time: "{{ lookup('pipe','date +%Y-%m-%dT%H:%M:%S') }}"
   tasks:
     - name: Send consolidated patch report
       community.general.mail:
@@ -80,15 +82,15 @@
         password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"
         to: "{{ notification_recipients }}"
         from: "{{ lookup('env', 'EMAIL_USER') }}"
-        subject: "Mirror Patch Report - {{ ansible_date_time.iso8601 }}"
+        subject: "Mirror Patch Report - {{ report_time }}"
         body: |
           Hello Team,
 
           ✅ Patch Summary Report ✅
 
-          Total Hosts     : {{ groups['linux_servers'] | length }}
-          Successful Patches: {{ all_reports | select('search', '✅ SUCCESS') | list | length }}
-          Failed Patches    : {{ all_reports | select('search', '❌ FAILED') | list | length }}
+          Total Hosts        : {{ groups['linux_servers'] | length }}
+          Successful Patches : {{ all_reports | select('search', '✅ SUCCESS') | list | length }}
+          Failed Patches     : {{ all_reports | select('search', '❌ FAILED') | list | length }}
 
           --- Host Reports ---
           {% for report in all_reports %}
