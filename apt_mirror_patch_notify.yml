@@ -47,20 +47,19 @@
             sources_file_status: "❌ Failed"
             apt_cache_status: "❌ Failed"
       always:
-        - name: Export results to controller
+        - name: Export results for consolidation
           delegate_to: localhost
           run_once: false
-          set_fact:
-            patch_results: "{{ (patch_results | default([])) + [ {
-                'host': inventory_hostname,
-                'status': patch_status,
-                'os': ansible_distribution ~ ' ' ~ ansible_distribution_version,
-                'mirror': mirror_url,
-                'release': release,
-                'timestamp': ansible_date_time.iso8601,
-                'sources_file_status': sources_file_status,
-                'apt_cache_status': apt_cache_status
-              } ] }}"
+          add_host:
+            name: "{{ inventory_hostname }}"
+            groups: patch_summary
+            patch_status: "{{ patch_status }}"
+            os: "{{ ansible_distribution ~ ' ' ~ ansible_distribution_version }}"
+            mirror: "{{ mirror_url }}"
+            release: "{{ release }}"
+            timestamp: "{{ ansible_date_time.iso8601 }}"
+            sources_file_status: "{{ sources_file_status }}"
+            apt_cache_status: "{{ apt_cache_status }}"
 
 # ==================== SECOND PLAY ====================
 
@@ -71,14 +70,14 @@
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
 
   tasks:
-    - name: Ensure patch_results is defined
+    - name: Build patch_results list from patch_summary group
       set_fact:
-        patch_results: "{{ patch_results | default([]) }}"
+        patch_results: "{{ groups['patch_summary'] | map('extract', hostvars) | list }}"
 
     - name: Separate success and failure hosts
       set_fact:
-        success_hosts: "{{ patch_results | selectattr('status','equalto','SUCCESS') | list }}"
-        failed_hosts: "{{ patch_results | selectattr('status','equalto','FAILED') | list }}"
+        success_hosts: "{{ patch_results | selectattr('patch_status','equalto','SUCCESS') | list }}"
+        failed_hosts: "{{ patch_results | selectattr('patch_status','equalto','FAILED') | list }}"
 
     - name: Send summary email with details
       community.general.mail:
@@ -99,27 +98,27 @@
           Successful Patches: {{ success_hosts | length }}
           Failed Patches    : {{ failed_hosts | length }}
 
-          --- Success Hosts ---
+          --- ✅ Success Hosts ---
           {% for h in success_hosts %}
-          Hostname   : {{ h.host }}
-          OS         : {{ h.os }}
-          Mirror URL : {{ h.mirror }}
-          Release    : {{ h.release }}
-          Timestamp  : {{ h.timestamp }}
-          Source List File : {{ h.sources_file_status }}
-          APT Cache Status : {{ h.apt_cache_status }}
+          Hostname          : {{ h.inventory_hostname }}
+          OS                : {{ h.os }}
+          Mirror URL        : {{ h.mirror }}
+          Release           : {{ h.release }}
+          Timestamp         : {{ h.timestamp }}
+          Source List File  : {{ h.sources_file_status }}
+          APT Cache Status  : {{ h.apt_cache_status }}
 
           {% endfor %}
 
-          --- Failed Hosts ---
+          --- ❌ Failed Hosts ---
           {% for h in failed_hosts %}
-          Hostname   : {{ h.host }}
-          OS         : {{ h.os }}
-          Mirror URL : {{ h.mirror }}
-          Release    : {{ h.release }}
-          Timestamp  : {{ h.timestamp }}
-          Source List File : {{ h.sources_file_status }}
-          APT Cache Status : {{ h.apt_cache_status }}
+          Hostname          : {{ h.inventory_hostname }}
+          OS                : {{ h.os }}
+          Mirror URL        : {{ h.mirror }}
+          Release           : {{ h.release }}
+          Timestamp         : {{ h.timestamp }}
+          Source List File  : {{ h.sources_file_status }}
+          APT Cache Status  : {{ h.apt_cache_status }}
 
           {% endfor %}
 
