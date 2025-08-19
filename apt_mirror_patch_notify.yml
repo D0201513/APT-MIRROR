@@ -5,9 +5,7 @@
   vars:
     mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
     release: "noble"
-    is_kali: "{{ ansible_distribution == 'Kali' }}"
 
-    # Sources for Kali/Ubuntu/Mint
     sources_content: |
       deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main universe
       deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main universe
@@ -17,6 +15,16 @@
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
 
   tasks:
+    - name: Clean existing sources.list.d
+      file:
+        path: /etc/apt/sources.list.d/
+        state: absent
+
+    - name: Recreate sources.list.d directory
+      file:
+        path: /etc/apt/sources.list.d/
+        state: directory
+
     - name: Patch Block
       block:
         - name: Update sources.list with local mirror
@@ -53,6 +61,7 @@
     - name: Build consolidated results table (run once)
       run_once: true
       delegate_to: localhost
+      become: no
       set_fact:
         consolidated_report: |
           | Hostname/IP | Status | OS |
@@ -64,6 +73,7 @@
     - name: Send consolidated notification email
       run_once: true
       delegate_to: localhost
+      become: no
       community.general.mail:
         host: smtp.gmail.com
         port: 587
