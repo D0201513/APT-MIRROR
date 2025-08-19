@@ -1,6 +1,6 @@
 ---
 - name: Patch configuration and report collection
-  hosts: all
+  hosts: Melur
   become: true
   gather_facts: yes
   any_errors_fatal: false
