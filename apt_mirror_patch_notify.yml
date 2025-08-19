@@ -1,93 +1,90 @@
 ---
-- name: Patch configuration and report collection
+name: Configure APT Mirror and Send Consolidated Notification
   hosts: Melur
-  gather_facts: yes
-  become: true
+  become: yes
+  vars:
+    mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
+    release: "noble"
+    is_kali: "{{ ansible_distribution == 'Kali' }}"
+
+    # Sources for Kali
+    sources_content_kali: |
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main universe
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main universe
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-security main universe
+
+    # Sources for Mint/Ubuntu
+    sources_content_mint: |
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main universe
+
+    # Multiple recipients
+    notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
 
   tasks:
-    - block:
-        - name: Configure apt mirror
-          apt_repository:
-            repo: "deb http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu noble main universe"
-            state: present
-          register: mirror_result
+    - name: Patch Block
+      block:
+        - name: Update sources.list with local mirror
+          copy:
+            dest: /etc/apt/sources.list
+            content: "{{ sources_content_kali if is_kali else sources_content_mint }}"
+          register: sources_result
 
-        - name: Update apt cache
+        - name: Update APT package cache
           apt:
             update_cache: yes
-          register: update_result
+          register: apt_result
 
-        - name: Mark success
+        - name: Mark status SUCCESS or UP-TO-DATE
           set_fact:
-            patch_report: |
-              🖥️ Hostname   : {{ inventory_hostname }}
-              🧠 OS         : {{ ansible_distribution }} {{ ansible_distribution_version }}
-              🌐 Mirror URL : http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu
-              📦 Release    : {{ ansible_distribution_release }}
-              📅 Timestamp  : {{ ansible_date_time.iso8601 }}
-              📁 Source     : {{ '✅ Configured' if mirror_result.changed else '✅ Already Configured' }}
-              🔄 APT Cache  : {{ '✅ Refreshed' if update_result.changed else '🔄 No Updates Needed' }}
-              Status       : ✅ SUCCESS
+            patch_status: >-
+              {% if apt_result.changed or sources_result.changed %}
+              ✅ SUCCESS
+              {% else %}
+              🔄 UP-TO-DATE
+              {% endif %}
+
       rescue:
-        - name: Mark failure
+        - name: Mark status FAILED
           set_fact:
-            patch_report: |
-              🖥️ Hostname   : {{ inventory_hostname }}
-              🧠 OS         : {{ ansible_distribution }} {{ ansible_distribution_version }}
-              🌐 Mirror URL : http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu
-              📦 Release    : {{ ansible_distribution_release }}
-              📅 Timestamp  : {{ ansible_date_time.iso8601 }}
-              📁 Source     : ⚠️ Error during patch
-              🔄 APT Cache  : ❌ Update Failed
-              Status       : ❌ FAILED
+            patch_status: "❌ FAILED"
 
-    - name: Collect reports into localhost fact
+    - name: Save patch status into hostvars
       set_fact:
-        all_reports: "{{ all_reports | default([]) + [patch_report] }}"
+        patch_summary:
+          status: "{{ patch_status }}"
+          os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+    - name: Build consolidated results table (run once)
+      run_once: true
       delegate_to: localhost
-      delegate_facts: true   # ensures persistence across plays
-
-# -----------------------------
-# Consolidation & Email
-# -----------------------------
-- name: Send Consolidated Email
-  hosts: localhost
-  gather_facts: false
-  vars:
-    smtp_host: "smtp.gmail.com"
-    smtp_port: 587
-    smtp_user: "yourgmail@gmail.com"
-    smtp_pass: "your-app-password"
-    mail_to: "receiver@example.com"
-
-  tasks:
-    - name: Debug collected reports
-      debug:
-        var: all_reports
-
-    - name: Count results (successful vs. failed patches)
       set_fact:
-        total_hosts: "{{ all_reports | length }}"
-        success_count: "{{ all_reports | select('search', '✅ SUCCESS') | list | length }}"
-        failed_count: "{{ all_reports | select('search', '❌ FAILED') | list | length }}"
-
-    - name: Send consolidated patch report via Gmail SMTP
-      community.general.mail:
-        host: "{{ smtp_host }}"
-        port: "{{ smtp_port }}"
-        username: "{{ smtp_user }}"
-        password: "{{ smtp_pass }}"
-        to: "{{ mail_to }}"
-        subject: "Consolidated Patch Report"
-        body: |
-          ✅ Patch Summary Report ✅
-
-          Total Hosts        : {{ total_hosts }}
-          Successful Patches : {{ success_count }}
-          Failed Patches     : {{ failed_count }}
-
-          --- Host Reports ---
-          {% for report in all_reports %}
-          {{ report }}
-          ----------------------------------------
+        consolidated_report: |
+          | Hostname/IP | Status | OS |
+          |-------------|--------|----|
+          {% for host in groups['linux_servers'] %}
+          | {{ host }} | {{ hostvars[host].patch_summary.status }} | {{ hostvars[host].patch_summary.os }} |
           {% endfor %}
+
+    - name: Send consolidated notification email
+      run_once: true
+      delegate_to: localhost
+      community.general.mail:
+        host: smtp.gmail.com
+        port: 587
+        secure: starttls
+        username: "{{ lookup('env', 'EMAIL_USER') }}"
+        password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"
+        to: "{{ notification_recipients }}"
+        from: "{{ lookup('env', 'EMAIL_USER') }}"
+        subject: "📢 Mirror Patch Report - Linux Servers"
+        body: |
+          Hello Team,
+
+          The patch update operation has been completed for the server group **linux_servers**.
+
+          {{ consolidated_report }}
+
+          Regards,  
+          🔧 Ansible Automation System
