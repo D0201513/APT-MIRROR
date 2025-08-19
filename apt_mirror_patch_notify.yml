@@ -1,6 +1,6 @@
 ---
 - name: Patch Hosts and Collect Results
-  hosts: linux_servers
+  hosts: Melur
   become: true
   gather_facts: yes
   vars:
