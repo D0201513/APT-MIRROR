@@ -68,7 +68,7 @@
 # PLAY 2: Patch configuration and report collection (Simple)
 # =======================================================
 - name: Patch configuration and report collection
-  hosts: all
+  hosts: Melur
   gather_facts: yes
   any_errors_fatal: false
 
