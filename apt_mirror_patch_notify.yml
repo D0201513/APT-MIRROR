@@ -66,7 +66,7 @@
         consolidated_report: |
           | Hostname/IP | Status | OS |
           |-------------|--------|----|
-          {% for host in groups['Melur'] %}
+          {% for host in groups['Tirumangalam'] %}
           | {{ host }} | {{ hostvars[host].patch_summary.status }} | {{ hostvars[host].patch_summary.os }} |
           {% endfor %}
 
@@ -82,11 +82,11 @@
         password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"
         to: "{{ notification_recipients }}"
         from: "{{ lookup('env', 'EMAIL_USER') }}"
-        subject: "📢 Mirror Patch Report - Melur Servers"
+        subject: "📢 Mirror Patch Report - Tirumangalam Servers"
         body: |
           Hello Team,
 
-          The patch update operation has been completed for the server group **Melur**.
+          The patch update operation has been completed for the server group **Tirumangalam**.
 
           {{ consolidated_report }}
 
