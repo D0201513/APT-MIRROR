@@ -55,11 +55,11 @@
           🔄 APT Cache  : {{ '✅ Refreshed' if apt_result.changed else '🔄 No Updates Needed' }}
           Status       : {{ patch_status }}
 
-    - name: Add report to global list on localhost
+    - name: Add report to global list (on localhost)
       delegate_to: localhost
       run_once: true  # Ensure this runs only once
       set_fact:
-        all_reports: "{{ all_reports | default([]) + [host_patch_report] }}"
+        all_reports: "{{ all_reports | default([]) + [host_patch_report] }}"  # Accumulate reports on localhost
 
 # -----------------------------
 # Send ONE email after all hosts
@@ -70,7 +70,8 @@
   vars:
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
     report_time: "{{ lookup('pipe','date +%Y-%m-%dT%H:%M:%S') }}"
-    total_hosts: "{{ groups['Melur'] | length }}"
+    total_hosts: "{{ groups['Melur'] | length }}"  # Total number of hosts in Melur group
+    # Make sure that the 'all_reports' variable is available here
     successful_patches: "{{ all_reports | select('search', '✅ SUCCESS') | list | length }}"
     failed_patches: "{{ all_reports | select('search', '❌ FAILED') | list | length }}"
   tasks:
