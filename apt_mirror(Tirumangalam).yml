@@ -2,7 +2,6 @@
 - name: Configure APT Mirror and Send Consolidated Notification
   hosts: Tirumangalam
   become: yes
-
   vars:
     mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
     release: "noble"
@@ -16,32 +15,31 @@
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
 
   tasks:
-
     - name: Clean existing sources.list.d
-      ansible.builtin.file:
+      file:
         path: /etc/apt/sources.list.d/
         state: absent
 
     - name: Recreate sources.list.d directory
-      ansible.builtin.file:
+      file:
         path: /etc/apt/sources.list.d/
         state: directory
 
     - name: Patch Block
       block:
         - name: Update sources.list with local mirror
-          ansible.builtin.copy:
+          copy:
             dest: /etc/apt/sources.list
             content: "{{ sources_content }}"
           register: sources_result
 
         - name: Update APT package cache
-          ansible.builtin.apt:
+          apt:
             update_cache: yes
           register: apt_result
 
         - name: Mark status SUCCESS or UP-TO-DATE
-          ansible.builtin.set_fact:
+          set_fact:
             patch_status: >-
               {% if apt_result.changed or sources_result.changed %}
               ✅ SUCCESS
@@ -51,11 +49,11 @@
 
       rescue:
         - name: Mark status FAILED
-          ansible.builtin.set_fact:
+          set_fact:
             patch_status: "❌ FAILED"
 
     - name: Save patch status into hostvars
-      ansible.builtin.set_fact:
+      set_fact:
         patch_summary:
           status: "{{ patch_status }}"
           os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
@@ -64,7 +62,7 @@
       run_once: true
       delegate_to: localhost
       become: no
-      ansible.builtin.set_fact:
+      set_fact:
         consolidated_report: |
           | Hostname/IP | Status | OS |
           |-------------|--------|----|
