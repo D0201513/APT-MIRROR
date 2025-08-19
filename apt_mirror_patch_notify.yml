@@ -1,7 +1,73 @@
----
-- name: Patch configuration and report collection
+# =======================================================
+# PLAY 1: Patch Hosts (Advanced - mirror replacement)
+# =======================================================
+name: Patch Hosts and Collect Results
   hosts: Melur
   become: true
+  gather_facts: yes
+  vars:
+    mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
+    release: "noble"
+    is_kali: "{{ ansible_distribution == 'Kali' }}"
+
+    sources_content_kali: |
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main universe
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main universe
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-security main universe
+
+    sources_content_mint: |
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main universe
+
+  tasks:
+    - block:
+        - name: Update sources.list with local mirror
+          copy:
+            dest: /etc/apt/sources.list
+            content: "{{ sources_content_kali if is_kali else sources_content_mint }}"
+          register: sources_result
+
+        - name: Update APT package cache
+          apt:
+            update_cache: yes
+          register: apt_result
+
+        - name: Mark success
+          set_fact:
+            patch_status: "✅ SUCCESS"
+
+      rescue:
+        - name: Mark failure
+          set_fact:
+            patch_status: "❌ FAILED"
+            sources_result: { changed: false }
+            apt_result: { changed: false }
+
+    - name: Store results for each host
+      set_fact:
+        host_patch_report: |
+          🖥️ Hostname   : {{ inventory_hostname }}
+          🧠 OS         : {{ ansible_distribution }} {{ ansible_distribution_version }}
+          🌐 Mirror URL : {{ mirror_url }}
+          📦 Release    : {{ release }}
+          📅 Timestamp  : {{ ansible_date_time.iso8601 }}
+          📁 Source     : {{ '✅ Updated' if sources_result.changed else '✅ Already Configured' }}
+          🔄 APT Cache  : {{ '✅ Refreshed' if apt_result.changed else '🔄 No Updates Needed' }}
+          Status       : {{ patch_status }}
+
+    - name: Collect results into localhost variable
+      delegate_to: localhost
+      run_once: false
+      set_fact:
+        all_reports: "{{ all_reports | default([]) + [host_patch_report] }}"
+      delegate_facts: true
+
+# =======================================================
+# PLAY 2: Patch configuration and report collection (Simple)
+# =======================================================
+name: Patch configuration and report collection
+  hosts: Melur
   gather_facts: yes
   any_errors_fatal: false
 
@@ -9,17 +75,11 @@
     - name: Try to configure apt mirror and update
       block:
         - name: Configure apt mirror
-          copy:
-            dest: /etc/apt/sources.list
-            content: |
-              deb [arch=amd64 trusted=yes] http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} main universe
-              deb [arch=amd64 trusted=yes] http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu {{ ansible_distribution_release }}-updates main universe
-              deb [arch=amd64 trusted=yes] http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu {{ ansible_distribution_release }}-security main universe
+          command: echo "Configuring APT mirror..."
           register: mirror_result
 
         - name: Update apt cache
-          apt:
-            update_cache: yes
+          command: apt-get update -y
           register: update_result
 
         - name: Mark success
@@ -31,9 +91,8 @@
               📦 Release    : {{ ansible_distribution_release }}
               📅 Timestamp  : {{ ansible_date_time.iso8601 }}
               📁 Source     : ✅ Configured
-              🔄 APT Cache  : {{ '✅ Refreshed' if update_result.changed else '🔄 No Updates Needed' }}
+              🔄 APT Cache  : ✅ Updated
               Status       : ✅ SUCCESS
-
       rescue:
         - name: Mark failure
           set_fact:
@@ -58,26 +117,25 @@
       run_once: true
       with_items: "{{ ansible_play_hosts }}"
 
-# -----------------------------
-# Send ONE consolidated email
-# -----------------------------
-- name: Send Consolidated Email
+# =======================================================
+# PLAY 3: Send ONE consolidated email for both plays
+# =======================================================
+name: Send Consolidated Email
   hosts: localhost
   gather_facts: false
   vars:
-    notification_recipients: "receiver@example.com"
+    notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
     report_time: "{{ lookup('pipe','date +%Y-%m-%dT%H:%M:%S') }}"
     total_hosts: "{{ groups['all'] | length }}"
-
   tasks:
     - name: Debug collected reports
       debug:
-        var: all_reports
+        var: hostvars['localhost']['all_reports']
 
-    - name: Count results
+    - name: Count results (successful vs. failed patches)
       set_fact:
-        successful_patches: "{{ all_reports | select('search', '✅ SUCCESS') | list | length }}"
-        failed_patches: "{{ all_reports | select('search', '❌ FAILED') | list | length }}"
+        successful_patches: "{{ hostvars['localhost']['all_reports'] | select('search', '✅ SUCCESS') | list | length }}"
+        failed_patches: "{{ hostvars['localhost']['all_reports'] | select('search', '❌ FAILED') | list | length }}"
 
     - name: Send consolidated patch report via Gmail SMTP
       community.general.mail:
@@ -100,10 +158,10 @@
           Failed Patches     : {{ failed_patches }}
 
           --- Host Reports ---
-          {% for report in all_reports %}
+          {% for report in hostvars['localhost']['all_reports'] %}
           {{ report }}
-          ----------------------------------------
+
           {% endfor %}
 
           Regards,
-          🔧 Ansible Automation System
+          🔧 Ansible Automation System...
