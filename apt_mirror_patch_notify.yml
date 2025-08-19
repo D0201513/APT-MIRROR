@@ -8,13 +8,11 @@
     release: "noble"
     is_kali: "{{ ansible_distribution == 'Kali' }}"
 
-    # Sources for Kali
     sources_content_kali: |
       deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main universe
       deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main universe
       deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-security main universe
 
-    # Sources for Mint/Ubuntu
     sources_content_mint: |
       deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main universe
       deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
@@ -56,11 +54,12 @@
           🔄 APT Cache  : {{ '✅ Refreshed' if apt_result.changed else '🔄 No Updates Needed' }}
           Status       : {{ patch_status }}
 
-    - name: Add report to global list (on localhost)
+    - name: Collect results into localhost variable
       delegate_to: localhost
-      run_once: false   # allow all hosts to contribute
+      run_once: false
       set_fact:
         all_reports: "{{ all_reports | default([]) + [host_patch_report] }}"
+      delegate_facts: true   # <-- this makes it survive into next play
 
 # -----------------------------
 # Send ONE consolidated email
@@ -72,12 +71,15 @@
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
     report_time: "{{ lookup('pipe','date +%Y-%m-%dT%H:%M:%S') }}"
     total_hosts: "{{ groups['Melur'] | length }}"
-    successful_patches: "{{ all_reports | select('search', '✅ SUCCESS') | list | length }}"
-    failed_patches: "{{ all_reports | select('search', '❌ FAILED') | list | length }}"
   tasks:
-    - name: Debug collected reports (for verification)
+    - name: Debug collected reports
       debug:
-        var: all_reports
+        var: hostvars['localhost']['all_reports']
+
+    - name: Count results
+      set_fact:
+        successful_patches: "{{ hostvars['localhost']['all_reports'] | select('search', '✅ SUCCESS') | list | length }}"
+        failed_patches: "{{ hostvars['localhost']['all_reports'] | select('search', '❌ FAILED') | list | length }}"
 
     - name: Send consolidated patch report via Gmail SMTP
       community.general.mail:
@@ -89,7 +91,7 @@
         to: "{{ notification_recipients }}"
         from: "{{ lookup('env', 'EMAIL_USER') }}"
         subject: "Mirror Patch Report - {{ report_time }}"
-        subtype: plain   # <-- ensures SMTP mode, not sendmail
+        subtype: plain
         body: |
           Hello Team,
 
@@ -100,7 +102,7 @@
           Failed Patches     : {{ failed_patches }}
 
           --- Host Reports ---
-          {% for report in all_reports %}
+          {% for report in hostvars['localhost']['all_reports'] %}
           {{ report }}
 
           {% endfor %}
