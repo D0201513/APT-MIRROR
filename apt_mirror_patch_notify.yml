@@ -7,17 +7,11 @@
     release: "noble"
     is_kali: "{{ ansible_distribution == 'Kali' }}"
 
-    # Sources for Kali
-    sources_content_kali: |
+    # Sources for Kali/Ubuntu/Mint
+    sources_content: |
       deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main universe
       deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main universe
       deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-security main universe
-
-    # Sources for Mint/Ubuntu
-    sources_content_mint: |
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main universe
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main universe
 
     # Multiple recipients
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
@@ -28,7 +22,7 @@
         - name: Update sources.list with local mirror
           copy:
             dest: /etc/apt/sources.list
-            content: "{{ sources_content_kali if is_kali else sources_content_mint }}"
+            content: "{{ sources_content }}"
           register: sources_result
 
         - name: Update APT package cache
@@ -63,7 +57,7 @@
         consolidated_report: |
           | Hostname/IP | Status | OS |
           |-------------|--------|----|
-          {% for host in groups['linux_servers'] %}
+          {% for host in groups['Melur'] %}
           | {{ host }} | {{ hostvars[host].patch_summary.status }} | {{ hostvars[host].patch_summary.os }} |
           {% endfor %}
 
@@ -78,11 +72,11 @@
         password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"
         to: "{{ notification_recipients }}"
         from: "{{ lookup('env', 'EMAIL_USER') }}"
-        subject: "📢 Mirror Patch Report - Linux Servers"
+        subject: "📢 Mirror Patch Report - Melur Servers"
         body: |
           Hello Team,
 
-          The patch update operation has been completed for the server group **linux_servers**.
+          The patch update operation has been completed for the server group **Melur**.
 
           {{ consolidated_report }}
 
