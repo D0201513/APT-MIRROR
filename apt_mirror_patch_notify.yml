@@ -62,6 +62,11 @@
         _report: "{{ host_patch_report }}"
       set_fact:
         all_reports: "{{ all_reports | default([]) + [_report] }}"
+    
+    - name: Count successful and failed patches
+      set_fact:
+        successful_patches: "{{ all_reports | select('search', '✅ SUCCESS') | list | length }}"
+        failed_patches: "{{ all_reports | select('search', '❌ FAILED') | list | length }}"
 
     - name: Debug all reports (for debugging purposes)
       debug:
@@ -77,10 +82,6 @@
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
     report_time: "{{ lookup('pipe','date +%Y-%m-%dT%H:%M:%S') }}"
   tasks:
-    - name: Initialize all_reports if undefined
-      set_fact:
-        all_reports: []
-
     - name: Send consolidated patch report
       community.general.mail:
         host: smtp.gmail.com
@@ -97,8 +98,8 @@
           ✅ Patch Summary Report ✅
 
           Total Hosts        : {{ groups['linux_servers'] | length }}
-          Successful Patches : {{ all_reports | select('search', '✅ SUCCESS') | list | length }}
-          Failed Patches     : {{ all_reports | select('search', '❌ FAILED') | list | length }}
+          Successful Patches : {{ successful_patches }}
+          Failed Patches     : {{ failed_patches }}
 
           --- Host Reports ---
           {% for report in all_reports %}
