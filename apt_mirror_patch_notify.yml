@@ -1,3 +1,4 @@
+---
 # =======================================================
 # PLAY 1: Patch Hosts (Advanced - mirror replacement)
 # =======================================================
@@ -66,7 +67,7 @@
 # =======================================================
 # PLAY 2: Patch configuration and report collection (Simple)
 # =======================================================
-name: Patch configuration and report collection
+- name: Patch configuration and report collection
   hosts: Melur
   gather_facts: yes
   any_errors_fatal: false
@@ -120,7 +121,7 @@ name: Patch configuration and report collection
 # =======================================================
 # PLAY 3: Send ONE consolidated email for both plays
 # =======================================================
-name: Send Consolidated Email
+- name: Send Consolidated Email
   hosts: localhost
   gather_facts: false
   vars:
