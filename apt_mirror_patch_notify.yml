@@ -1,5 +1,5 @@
 ---
-name: Configure APT Mirror and Send Consolidated Notification
+- name: Configure APT Mirror and Send Consolidated Notification
   hosts: Melur
   become: yes
   vars:
