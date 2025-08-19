@@ -82,11 +82,11 @@
         password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"
         to: "{{ notification_recipients }}"
         from: "{{ lookup('env', 'EMAIL_USER') }}"
-        subject: "📢 Mirror Patch Report - linux_servers"
+        subject: "📢 Mirror Patch Report - Madurai City Centre"
         body: |
           Hello Team,
 
-          The patch update operation has been completed for the server group **linux_servers**.
+          The patch update operation has been completed for the server group **Madurai City Centre**.
 
           {{ consolidated_report }}
 
