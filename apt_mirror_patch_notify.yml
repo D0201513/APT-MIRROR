@@ -1,86 +1,20 @@
 ---
-# =======================================================
-# PLAY 1: Patch Hosts (Advanced - mirror replacement)
-# =======================================================
-- name: Patch Hosts and Collect Results
-  hosts: Melur
-  become: true
+- name: Patch configuration and report collection
+  hosts: all
   gather_facts: yes
-  vars:
-    mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
-    release: "noble"
-    is_kali: "{{ ansible_distribution == 'Kali' }}"
-
-    sources_content_kali: |
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main universe
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main universe
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-security main universe
-
-    sources_content_mint: |
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main universe
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
-      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main universe
+  become: true
 
   tasks:
     - block:
-        - name: Update sources.list with local mirror
-          copy:
-            dest: /etc/apt/sources.list
-            content: "{{ sources_content_kali if is_kali else sources_content_mint }}"
-          register: sources_result
-
-        - name: Update APT package cache
-          apt:
-            update_cache: yes
-          register: apt_result
-
-        - name: Mark success
-          set_fact:
-            patch_status: "✅ SUCCESS"
-
-      rescue:
-        - name: Mark failure
-          set_fact:
-            patch_status: "❌ FAILED"
-            sources_result: { changed: false }
-            apt_result: { changed: false }
-
-    - name: Store results for each host
-      set_fact:
-        host_patch_report: |
-          🖥️ Hostname   : {{ inventory_hostname }}
-          🧠 OS         : {{ ansible_distribution }} {{ ansible_distribution_version }}
-          🌐 Mirror URL : {{ mirror_url }}
-          📦 Release    : {{ release }}
-          📅 Timestamp  : {{ ansible_date_time.iso8601 }}
-          📁 Source     : {{ '✅ Updated' if sources_result.changed else '✅ Already Configured' }}
-          🔄 APT Cache  : {{ '✅ Refreshed' if apt_result.changed else '🔄 No Updates Needed' }}
-          Status       : {{ patch_status }}
-
-    - name: Collect results into localhost variable
-      delegate_to: localhost
-      run_once: false
-      set_fact:
-        all_reports: "{{ all_reports | default([]) + [host_patch_report] }}"
-      delegate_facts: true
-
-# =======================================================
-# PLAY 2: Patch configuration and report collection (Simple)
-# =======================================================
-- name: Patch configuration and report collection
-  hosts: Melur
-  gather_facts: yes
-  any_errors_fatal: false
-
-  tasks:
-    - name: Try to configure apt mirror and update
-      block:
         - name: Configure apt mirror
-          command: echo "Configuring APT mirror..."
+          apt_repository:
+            repo: "deb http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu noble main universe"
+            state: present
           register: mirror_result
 
         - name: Update apt cache
-          command: apt-get update -y
+          apt:
+            update_cache: yes
           register: update_result
 
         - name: Mark success
@@ -91,8 +25,8 @@
               🌐 Mirror URL : http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu
               📦 Release    : {{ ansible_distribution_release }}
               📅 Timestamp  : {{ ansible_date_time.iso8601 }}
-              📁 Source     : ✅ Configured
-              🔄 APT Cache  : ✅ Updated
+              📁 Source     : {{ '✅ Configured' if mirror_result.changed else '✅ Already Configured' }}
+              🔄 APT Cache  : {{ '✅ Refreshed' if update_result.changed else '🔄 No Updates Needed' }}
               Status       : ✅ SUCCESS
       rescue:
         - name: Mark failure
@@ -107,62 +41,53 @@
               🔄 APT Cache  : ❌ Update Failed
               Status       : ❌ FAILED
 
-    - name: Save report into host variable
+    - name: Collect reports into localhost fact
       set_fact:
-        single_report: "{{ patch_report }}"
-
-    - name: Collect results into localhost variable
-      set_fact:
-        all_reports: "{{ all_reports | default([]) + [ hostvars[item].single_report ] }}"
+        all_reports: "{{ all_reports | default([]) + [patch_report] }}"
       delegate_to: localhost
-      run_once: true
-      with_items: "{{ ansible_play_hosts }}"
+      delegate_facts: true   # ensures persistence across plays
 
-# =======================================================
-# PLAY 3: Send ONE consolidated email for both plays
-# =======================================================
+# -----------------------------
+# Consolidation & Email
+# -----------------------------
 - name: Send Consolidated Email
   hosts: localhost
   gather_facts: false
   vars:
-    notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
-    report_time: "{{ lookup('pipe','date +%Y-%m-%dT%H:%M:%S') }}"
-    total_hosts: "{{ groups['all'] | length }}"
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    smtp_user: "yourgmail@gmail.com"
+    smtp_pass: "your-app-password"
+    mail_to: "receiver@example.com"
+
   tasks:
     - name: Debug collected reports
       debug:
-        var: hostvars['localhost']['all_reports']
+        var: all_reports
 
     - name: Count results (successful vs. failed patches)
       set_fact:
-        successful_patches: "{{ hostvars['localhost']['all_reports'] | select('search', '✅ SUCCESS') | list | length }}"
-        failed_patches: "{{ hostvars['localhost']['all_reports'] | select('search', '❌ FAILED') | list | length }}"
+        total_hosts: "{{ all_reports | length }}"
+        success_count: "{{ all_reports | select('search', '✅ SUCCESS') | list | length }}"
+        failed_count: "{{ all_reports | select('search', '❌ FAILED') | list | length }}"
 
     - name: Send consolidated patch report via Gmail SMTP
       community.general.mail:
-        host: smtp.gmail.com
-        port: 587
-        secure: starttls
-        username: "{{ lookup('env', 'EMAIL_USER') }}"
-        password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"
-        to: "{{ notification_recipients }}"
-        from: "{{ lookup('env', 'EMAIL_USER') }}"
-        subject: "Mirror Patch Report - {{ report_time }}"
-        subtype: plain
+        host: "{{ smtp_host }}"
+        port: "{{ smtp_port }}"
+        username: "{{ smtp_user }}"
+        password: "{{ smtp_pass }}"
+        to: "{{ mail_to }}"
+        subject: "Consolidated Patch Report"
         body: |
-          Hello Team,
-
           ✅ Patch Summary Report ✅
 
           Total Hosts        : {{ total_hosts }}
-          Successful Patches : {{ successful_patches }}
-          Failed Patches     : {{ failed_patches }}
+          Successful Patches : {{ success_count }}
+          Failed Patches     : {{ failed_count }}
 
           --- Host Reports ---
-          {% for report in hostvars['localhost']['all_reports'] %}
+          {% for report in all_reports %}
           {{ report }}
-
+          ----------------------------------------
           {% endfor %}
-
-          Regards,
-          🔧 Ansible Automation System...
