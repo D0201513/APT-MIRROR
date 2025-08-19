@@ -1,7 +1,7 @@
 # =======================================================
 # PLAY 1: Patch Hosts (Advanced - mirror replacement)
 # =======================================================
-name: Patch Hosts and Collect Results
+- name: Patch Hosts and Collect Results
   hosts: Melur
   become: true
   gather_facts: yes
