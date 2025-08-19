@@ -1,6 +1,6 @@
 ---
 - name: Configure APT Mirror and Send Consolidated Notification
-  hosts: Tirumangalam
+  hosts: all
   become: yes
   vars:
     mirror_url: "http://172.17.9.58/Ubuntu/mirror/archive.ubuntu.com/ubuntu"
@@ -66,7 +66,7 @@
         consolidated_report: |
           | Hostname/IP | Status | OS |
           |-------------|--------|----|
-          {% for host in groups['Tirumangalam'] %}
+          {% for host in groups['all'] %}
           | {{ host }} | {{ hostvars[host].patch_summary.status }} | {{ hostvars[host].patch_summary.os }} |
           {% endfor %}
 
