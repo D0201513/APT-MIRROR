@@ -10,9 +10,9 @@
 
     # Sources for Kali
     sources_content_kali: |
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }} main universe
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-updates main universe
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/ubuntu.gpg] {{ mirror_url }} {{ release }}-security main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }} main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-updates main universe
+      deb [arch=amd64 trusted=yes] {{ mirror_url }} {{ release }}-security main universe
 
     # Sources for Mint/Ubuntu
     sources_content_mint: |
@@ -64,7 +64,7 @@
       set_fact:
         all_reports: "{{ all_reports | default([]) + [host_patch_report] }}"
 
-    - name: Send consolidated patch report
+    - name: Send consolidated patch report via Gmail SMTP
       delegate_to: localhost
       run_once: true
       community.general.mail:
