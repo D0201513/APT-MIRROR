@@ -1,6 +1,6 @@
 ---
 - name: Patch configuration and report collection
-  hosts: all
+  hosts: 10.17.10.38
   gather_facts: yes
   become: true
 
