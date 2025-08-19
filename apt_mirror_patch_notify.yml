@@ -67,7 +67,7 @@
       set_fact:
         successful_patches: "{{ all_reports | select('search', '✅ SUCCESS') | list | length }}"
         failed_patches: "{{ all_reports | select('search', '❌ FAILED') | list | length }}"
-
+    
     - name: Debug all reports (for debugging purposes)
       debug:
         var: all_reports
@@ -81,6 +81,7 @@
   vars:
     notification_recipients: "aravind_slcs_intern2@aravind.org,karthikeyan.sudhakar@aravind.org"
     report_time: "{{ lookup('pipe','date +%Y-%m-%dT%H:%M:%S') }}"
+    total_hosts: "{{ groups['linux_servers'] | length }}"
   tasks:
     - name: Send consolidated patch report
       community.general.mail:
@@ -97,7 +98,7 @@
 
           ✅ Patch Summary Report ✅
 
-          Total Hosts        : {{ groups['linux_servers'] | length }}
+          Total Hosts        : {{ total_hosts }}
           Successful Patches : {{ successful_patches }}
           Failed Patches     : {{ failed_patches }}
 
