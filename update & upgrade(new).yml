@@ -108,7 +108,7 @@
         body: |
           Hello Team,
 
-          The patch update and upgrade operation has been completed for the server group **Tirumangalam**.
+          The patch update and upgrade operation has been completed for the server group **CC-MDU**.
 
           {{ consolidated_report }}
 
